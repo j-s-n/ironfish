@@ -18,12 +18,13 @@ type Bech32Decoder = (
 ) => AccountImport
 
 export class Bech32Encoder implements AccountEncoder {
-  VERSION = 3
+  VERSION = 4
 
   VERSION_DECODERS: Map<number, Bech32Decoder> = new Map([
     [1, decoderV1],
     [2, decoderV2],
     [3, decoderV3],
+    [4, decoderV4],
   ])
 
   /**
@@ -61,6 +62,8 @@ export class Bech32Encoder implements AccountEncoder {
     if (value.proofAuthorizingKey) {
       bw.writeBytes(Buffer.from(value.proofAuthorizingKey, 'hex'))
     }
+
+    bw.writeU8(Number(!!value.ledger))
 
     return Bech32m.encode(bw.render().toString('hex'), BECH32_ACCOUNT_PREFIX)
   }
@@ -128,6 +131,7 @@ export class Bech32Encoder implements AccountEncoder {
       size += KEY_LENGTH
       size += 1 // ledger
     }
+    size += 1 // ledger
 
     return size
   }
@@ -166,7 +170,7 @@ function decoderV1(
     publicAddress,
     createdAt,
     proofAuthorizingKey: null,
-    ledger,
+    ledger: false,
   }
 }
 
@@ -205,5 +209,19 @@ function decoderV3(
   return {
     ...accountImport,
     proofAuthorizingKey,
+  }
+}
+
+function decoderV4(
+  reader: bufio.BufferReader,
+  options?: AccountDecodingOptions,
+): AccountImport {
+  const accountImport = decoderV3(reader, options)
+
+  const ledger = reader.readU8() === 1
+
+  return {
+    ...accountImport,
+    ledger,
   }
 }

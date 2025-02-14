@@ -508,18 +508,6 @@ export class Wallet {
     })
   }
 
-  shouldDecryptForAccount(blockHeader: BlockHeader, account: Account): boolean {
-    if (account.createdAt === null) {
-      return true
-    }
-
-    if (account.createdAt.sequence > blockHeader.sequence) {
-      return false
-    }
-
-    return true
-  }
-
   private async connectBlockTransactions(
     blockHeader: BlockHeader,
     transactions: Array<{ transaction: Transaction; decryptedNotes: Array<DecryptedNote> }>,
@@ -1488,12 +1476,14 @@ export class Wallet {
     accountValue: AccountImport,
     options?: { createdAt?: number },
   ): Promise<Account> {
-    let multisigKeys = accountValue.multisigKeys
+    let multisigKeys = undefined
     let secret: Buffer | undefined
     let identity: Buffer | undefined
     const name = accountValue.name
 
     if (accountValue.multisigKeys) {
+      multisigKeys = accountValue.multisigKeys
+
       if (isMultisigSignerTrustedDealerImport(accountValue.multisigKeys)) {
         const multisigIdentity = await this.walletDb.getMultisigIdentity(
           Buffer.from(accountValue.multisigKeys.identity, 'hex'),
@@ -1503,15 +1493,20 @@ export class Wallet {
         }
 
         multisigKeys = {
-          keyPackage: accountValue.multisigKeys.keyPackage,
-          publicKeyPackage: accountValue.multisigKeys.publicKeyPackage,
+          ...multisigKeys,
           secret: multisigIdentity.secret.toString('hex'),
         }
         secret = multisigIdentity.secret
         identity = Buffer.from(accountValue.multisigKeys.identity, 'hex')
       } else if (isMultisigSignerImport(accountValue.multisigKeys)) {
         secret = Buffer.from(accountValue.multisigKeys.secret, 'hex')
+        // Derive identity from secret for backwards compatibility: legacy
+        // MultisigKeysImport may not include identity
         identity = new multisig.ParticipantSecret(secret).toIdentity().serialize()
+        multisigKeys = {
+          ...multisigKeys,
+          identity: identity.toString('hex'),
+        }
       } else if (isMultisigHardwareSignerImport(accountValue.multisigKeys)) {
         identity = Buffer.from(accountValue.multisigKeys.identity, 'hex')
       }
